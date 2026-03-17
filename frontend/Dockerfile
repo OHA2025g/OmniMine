@@ -3,7 +3,7 @@
 # - builder: installs deps + builds CRA bundle
 # - runtime: serves static build via nginx
 #
-FROM node:18-bullseye-slim AS builder
+FROM node:20-bullseye-slim AS builder
 
 WORKDIR /app
 

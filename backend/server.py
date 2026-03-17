@@ -2189,8 +2189,7 @@ async def generate_dummy_feedback_batch(payload: DummyFeedbackBatchRequest, requ
     """
     if not has_permission(user.get("role"), Permission.FEEDBACK_BULK_CREATE.value):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
-    if not (HF_TOKEN and InferenceClient):
-        raise HTTPException(status_code=400, detail="Hugging Face is not configured (HF_TOKEN missing)")
+    use_hf = bool(HF_TOKEN and InferenceClient)
 
     count = int(payload.count or 10)
     if count < 1 or count > 50:
@@ -2214,25 +2213,61 @@ async def generate_dummy_feedback_batch(payload: DummyFeedbackBatchRequest, requ
     now = datetime.now(timezone.utc)
 
     async def make_one(force_sentiment: str) -> Feedback:
-        seed = str(uuid.uuid4())
-        data = await hf_chat_json(
-            system=(
-                "Generate ONE realistic customer feedback item for a SaaS product and its sentiment analysis. "
-                "Return ONLY valid JSON with keys:\n"
-                "- content: string (1-3 sentences)\n"
-                "- source: one of (twitter, facebook, youtube, website, support_ticket, email, survey, manual)\n"
-                "- author_name: string\n"
-                "- sentiment: one of (positive, neutral, negative)\n"
-                "- confidence: float 0..1\n"
-                "- emotions: array of strings\n"
-                "- themes: array of strings\n"
-                "- key_phrases: array of strings\n"
-                "- sarcasm_detected: boolean\n\n"
-                f"Rules:\n- sentiment must be '{force_sentiment}'\n"
-                "- If sentiment is negative, make it constructive/actionable.\n"
-            ),
-            user=f"seed={seed}. Topic variety: billing, bugs, UX, performance, support, security, features.",
-        )
+        # If HF is configured, use LLM generation; otherwise fallback to templates
+        if use_hf:
+            seed = str(uuid.uuid4())
+            data = await hf_chat_json(
+                system=(
+                    "Generate ONE realistic customer feedback item for a SaaS product and its sentiment analysis. "
+                    "Return ONLY valid JSON with keys:\n"
+                    "- content: string (1-3 sentences)\n"
+                    "- source: one of (twitter, facebook, youtube, website, support_ticket, email, survey, manual)\n"
+                    "- author_name: string\n"
+                    "- sentiment: one of (positive, neutral, negative)\n"
+                    "- confidence: float 0..1\n"
+                    "- emotions: array of strings\n"
+                    "- themes: array of strings\n"
+                    "- key_phrases: array of strings\n"
+                    "- sarcasm_detected: boolean\n\n"
+                    f"Rules:\n- sentiment must be '{force_sentiment}'\n"
+                    "- If sentiment is negative, make it constructive/actionable.\n"
+                ),
+                user=f"seed={seed}. Topic variety: billing, bugs, UX, performance, support, security, features.",
+            )
+        else:
+            # Template fallback for Docker runs without HF_TOKEN
+            neg_templates = [
+                "The app feels slow during peak hours and the dashboard often times out. Please optimize performance or provide a lighter view.",
+                "I was billed twice this month and support hasn’t resolved it yet. Please refund the duplicate charge and confirm billing logic.",
+                "Search is unreliable—it misses obvious matches. Can you improve indexing and add filters?",
+                "The latest update broke notifications. Please fix and share a workaround until patched.",
+                "Export to CSV fails for large datasets. Please add chunked exports or background jobs.",
+            ]
+            neu_templates = [
+                "Overall the product is fine, but onboarding could be clearer. A short guided tour would help.",
+                "I’m neutral on the new UI—looks cleaner but takes extra clicks. Maybe add compact mode.",
+                "Support responded quickly, but the solution was incomplete. Please follow up with next steps.",
+            ]
+            pos_templates = [
+                "Great experience so far—setup was quick and the insights are genuinely useful. Keep it up!",
+                "Love the new dashboard design. It’s fast and the charts are easy to understand.",
+                "Excellent support—my issue was resolved in one message. Thank you!",
+            ]
+            srcs = ["twitter", "facebook", "youtube", "website", "support_ticket", "email", "survey", "manual"]
+            authors = ["Alex", "Priya", "Jordan", "Sam", "Taylor", "Aman", "Riya", "Dev Team"]
+            pool = neg_templates if force_sentiment == "negative" else (pos_templates if force_sentiment == "positive" else neu_templates)
+            content = pool[int(time.time() * 1000) % len(pool)]
+            data = {
+                "content": content,
+                "source": srcs[int(time.time() * 1000) % len(srcs)],
+                "author_name": authors[int(time.time() * 1000) % len(authors)],
+                "sentiment": force_sentiment,
+                "confidence": 0.85 if force_sentiment == "negative" else 0.7,
+                "emotions": (["frustration"] if force_sentiment == "negative" else (["joy"] if force_sentiment == "positive" else ["neutral"])),
+                "themes": (["performance", "billing"] if force_sentiment == "negative" else (["product", "ux"] if force_sentiment == "positive" else ["ux"])),
+                "key_phrases": [],
+                "sarcasm_detected": False,
+            }
 
         content = (data.get("content") or "").strip()
         if not content:
