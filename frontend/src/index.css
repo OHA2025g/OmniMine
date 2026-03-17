@@ -1,0 +1,197 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+    margin: 0;
+    font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* Hide Emergent badge if injected */
+#emergent-badge {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    font-family: 'Manrope', sans-serif;
+}
+
+code {
+    font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New", monospace;
+}
+
+@layer base {
+    :root {
+        --background: 0 0% 100%;
+        --foreground: 222 47% 11%;
+        --card: 0 0% 100%;
+        --card-foreground: 222 47% 11%;
+        --popover: 0 0% 100%;
+        --popover-foreground: 222 47% 11%;
+        --primary: 239 84% 67%;
+        --primary-foreground: 0 0% 100%;
+        --secondary: 210 40% 96%;
+        --secondary-foreground: 222 47% 11%;
+        --muted: 210 40% 96%;
+        --muted-foreground: 215 16% 47%;
+        --accent: 210 40% 96%;
+        --accent-foreground: 222 47% 11%;
+        --destructive: 0 84% 60%;
+        --destructive-foreground: 0 0% 100%;
+        --border: 214 32% 91%;
+        --input: 214 32% 91%;
+        --ring: 239 84% 67%;
+        --chart-1: 160 84% 39%;
+        --chart-2: 215 16% 47%;
+        --chart-3: 350 89% 60%;
+        --chart-4: 43 74% 66%;
+        --chart-5: 27 87% 67%;
+        --radius: 0.75rem;
+        
+        /* Sentiment Colors */
+        --sentiment-positive: 160 84% 39%;
+        --sentiment-neutral: 215 16% 47%;
+        --sentiment-negative: 350 89% 60%;
+    }
+}
+
+@layer base {
+    * {
+        @apply border-border;
+    }
+    body {
+        @apply bg-background text-foreground;
+    }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    @apply bg-slate-100;
+}
+
+::-webkit-scrollbar-thumb {
+    @apply bg-slate-300 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    @apply bg-slate-400;
+}
+
+/* Animations */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideIn {
+    from { transform: translateX(-20px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes pulse-slow {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+.animate-fade-in {
+    animation: fadeIn 0.3s ease-out;
+}
+
+.animate-slide-in {
+    animation: slideIn 0.3s ease-out;
+}
+
+.animate-pulse-slow {
+    animation: pulse-slow 2s ease-in-out infinite;
+}
+
+/* Staggered animations */
+.stagger-1 { animation-delay: 0.1s; }
+.stagger-2 { animation-delay: 0.2s; }
+.stagger-3 { animation-delay: 0.3s; }
+.stagger-4 { animation-delay: 0.4s; }
+.stagger-5 { animation-delay: 0.5s; }
+
+/* Dashboard cards */
+.dashboard-card {
+    @apply bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all duration-200;
+}
+
+/* Sentiment badges */
+.sentiment-positive {
+    @apply bg-emerald-50 text-emerald-700 border-emerald-200;
+}
+
+.sentiment-neutral {
+    @apply bg-slate-50 text-slate-700 border-slate-200;
+}
+
+.sentiment-negative {
+    @apply bg-rose-50 text-rose-700 border-rose-200;
+}
+
+/* Priority badges */
+.priority-low {
+    @apply bg-blue-50 text-blue-700;
+}
+
+.priority-medium {
+    @apply bg-amber-50 text-amber-700;
+}
+
+.priority-high {
+    @apply bg-orange-50 text-orange-700;
+}
+
+.priority-critical {
+    @apply bg-red-50 text-red-700;
+}
+
+/* Status badges */
+.status-open {
+    @apply bg-blue-50 text-blue-700;
+}
+
+.status-in_progress {
+    @apply bg-amber-50 text-amber-700;
+}
+
+.status-resolved {
+    @apply bg-emerald-50 text-emerald-700;
+}
+
+.status-closed {
+    @apply bg-slate-50 text-slate-700;
+}
+
+.status-escalated {
+    @apply bg-red-50 text-red-700;
+}
+
+/* Glass effect */
+.glass {
+    @apply backdrop-blur-md bg-white/80;
+}
+
+/* Focus states */
+.focus-ring {
+    @apply focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 focus:outline-none;
+}
+
+@layer base {
+    [data-debug-wrapper="true"] {
+        display: contents !important;
+    }
+}

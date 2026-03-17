@@ -1,0 +1,174 @@
+{
+  "identity": {
+    "name": "E1",
+    "persona": "The Anti-AI Designer",
+    "principles": [
+      "Fusion over Imitation",
+      "Emotion First",
+      "Content is King",
+      "Zoom In",
+      "Negative Space",
+      "Contrast"
+    ]
+  },
+  "typography": {
+    "fonts": {
+      "headings": {
+        "family": "Manrope",
+        "weights": ["400", "600", "700"],
+        "cdn": "https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&display=swap"
+      },
+      "body": {
+        "family": "IBM Plex Sans",
+        "weights": ["400", "500", "600"],
+        "cdn": "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap"
+      }
+    },
+    "scale": {
+      "h1": "text-4xl md:text-5xl font-bold tracking-tight",
+      "h2": "text-3xl font-semibold tracking-tight",
+      "h3": "text-2xl font-semibold",
+      "p": "text-base text-muted-foreground leading-relaxed",
+      "small": "text-sm font-medium text-muted-foreground",
+      "label": "text-xs font-bold uppercase tracking-wider text-muted-foreground"
+    }
+  },
+  "colors": {
+    "palette": {
+      "primary": {
+        "name": "Omni Indigo",
+        "hex": "#4F46E5",
+        "tailwind": "indigo-600",
+        "foreground": "#FFFFFF"
+      },
+      "secondary": {
+        "name": "Slate Mist",
+        "hex": "#F1F5F9",
+        "tailwind": "slate-100",
+        "foreground": "#0F172A"
+      },
+      "background": {
+        "default": "#FFFFFF",
+        "subtle": "#F8FAFC"
+      },
+      "sentiment": {
+        "positive": {
+          "hex": "#10B981",
+          "tailwind": "emerald-500",
+          "bg": "bg-emerald-50",
+          "text": "text-emerald-700"
+        },
+        "neutral": {
+          "hex": "#64748B",
+          "tailwind": "slate-500",
+          "bg": "bg-slate-50",
+          "text": "text-slate-700"
+        },
+        "negative": {
+          "hex": "#F43F5E",
+          "tailwind": "rose-500",
+          "bg": "bg-rose-50",
+          "text": "text-rose-700"
+        }
+      }
+    },
+    "theme": "light",
+    "notes": "Use 'Omni Indigo' for primary actions. Use Sentiment colors for data viz and status tags only. Avoid using negative red for UI errors; use a softer orange or standard destruct red."
+  },
+  "layout": {
+    "grid_system": {
+      "dashboard": "grid grid-cols-1 md:grid-cols-12 gap-6 p-6",
+      "card_grid": "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+    },
+    "spacing": {
+      "container_padding": "p-6 md:p-8 lg:p-10",
+      "section_gap": "gap-8",
+      "internal_card_padding": "p-6"
+    },
+    "containers": {
+      "main_wrapper": "max-w-[1600px] mx-auto w-full",
+      "dashboard_card": "bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow duration-200"
+    }
+  },
+  "components": {
+    "buttons": {
+      "default": "rounded-lg font-medium transition-all active:scale-95",
+      "primary": "bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm hover:shadow-indigo-500/25",
+      "ghost": "hover:bg-slate-100 text-slate-700"
+    },
+    "cards": {
+      "style": "clean-bordered",
+      "border_radius": "rounded-xl",
+      "shadow": "shadow-sm",
+      "border": "border border-slate-200"
+    },
+    "inputs": {
+      "style": "minimal",
+      "border_radius": "rounded-lg",
+      "focus_ring": "focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500"
+    }
+  },
+  "visual_enhancers": {
+    "glassmorphism": "backdrop-blur-md bg-white/80 border-b border-white/20",
+    "gradients": {
+      "hero_overlay": "bg-gradient-to-b from-slate-50/50 to-white",
+      "brand_accent": "bg-gradient-to-r from-indigo-500 to-violet-500"
+    },
+    "shadows": {
+      "soft": "shadow-[0_2px_8px_rgba(0,0,0,0.04)]",
+      "float": "shadow-[0_8px_24px_rgba(0,0,0,0.08)]"
+    }
+  },
+  "assets": {
+    "icons": {
+      "library": "@phosphor-icons/react",
+      "style": "duotone",
+      "installation": "yarn add @phosphor-icons/react"
+    },
+    "images": {
+      "login_bg": {
+        "url": "https://images.unsplash.com/photo-1772475385509-93fd87a2d4ba?crop=entropy&cs=srgb&fm=jpg&q=85",
+        "desc": "Modern office with wooden desk and shelves",
+        "category": "background"
+      },
+      "user_avatars": [
+        {
+          "url": "https://images.unsplash.com/photo-1650784853619-0845742430b7?crop=entropy&cs=srgb&fm=jpg&q=85",
+          "desc": "Group of women posing",
+          "category": "avatar"
+        },
+        {
+          "url": "https://images.unsplash.com/photo-1650784855038-9f4d5ed154a9?crop=entropy&cs=srgb&fm=jpg&q=85",
+          "desc": "Group of women posing",
+          "category": "avatar"
+        }
+      ]
+    }
+  },
+  "motion": {
+    "transitions": {
+      "default": "transition-all duration-200 ease-in-out",
+      "slow": "transition-all duration-500 ease-out"
+    },
+    "interactions": {
+      "hover_lift": "hover:-translate-y-1 hover:shadow-lg",
+      "active_press": "active:scale-95"
+    }
+  },
+  "accessibility": {
+    "contrast_check": "Ensure text-slate-500 is not used on dark backgrounds. Use text-slate-400 or lighter.",
+    "focus_states": "All interactive elements must have visible focus rings.",
+    "chart_colors": "Use patterns or distinct shades for color-blind friendly charts."
+  },
+  "universal_guidelines": [
+    "Do not use generic 'Inter' font. Use Manrope for Headings.",
+    "Avoid full-screen gradients. Use subtle mesh or noise textures.",
+    "Buttons should not be 100% rounded pills unless specific context. Default to rounded-lg.",
+    "Charts must use the specified Sentiment Palette.",
+    "All interactive elements must have data-testid attributes.",
+    "Use generous padding (p-6+) inside cards.",
+    "Never center text in the main content area; use left-align for readability.",
+    "Toasts must use 'sonner'."
+  ],
+  "instructions_to_main_agent": "Start by setting up the font families in index.css. Then configure tailwind.config.js with the custom colors. Build the Layout shell (Sidebar + Header) first, then the Dashboard widgets using the 'Bento' grid logic."
+}

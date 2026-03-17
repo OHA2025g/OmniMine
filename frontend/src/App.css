@@ -1,0 +1,59 @@
+/* OmniMine - Global Styles */
+
+/* App container */
+.App {
+    min-height: 100vh;
+}
+
+/* Line clamp utilities */
+.line-clamp-1 {
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.line-clamp-3 {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+/* Custom chart styles */
+.recharts-text {
+    font-family: 'IBM Plex Sans', sans-serif;
+}
+
+.recharts-legend-item-text {
+    font-size: 12px;
+    color: #64748b;
+}
+
+/* Toast customization */
+[data-sonner-toaster] {
+    font-family: 'IBM Plex Sans', sans-serif;
+}
+
+/* Smooth transitions */
+* {
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Focus visible styles */
+:focus-visible {
+    outline: 2px solid hsl(239 84% 67%);
+    outline-offset: 2px;
+}
+
+/* Selection styles */
+::selection {
+    background-color: hsl(239 84% 67% / 0.2);
+}
