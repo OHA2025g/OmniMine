@@ -12,7 +12,7 @@ RUN yarn install --frozen-lockfile
 
 COPY . /app
 
-ARG REACT_APP_BACKEND_URL=https://omnimine.demoapi.arayianailabs.com
+ARG REACT_APP_BACKEND_URL=https://omnimine.demoapi.agrayianailabs.com/
 ENV REACT_APP_BACKEND_URL=$REACT_APP_BACKEND_URL
 
 RUN yarn build
