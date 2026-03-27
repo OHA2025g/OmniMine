@@ -48,6 +48,9 @@ export const Layout = () => {
   const [unreadAlerts, setUnreadAlerts] = useState(0);
   const [orgs, setOrgs] = useState([]);
   const [orgsLoading, setOrgsLoading] = useState(false);
+  const navItemsComputed = (user?.role === 'admin')
+    ? [...navItems, { path: '/admin', icon: Gear, label: 'Admin Console' }]
+    : navItems;
 
   useEffect(() => {
     // Real-time alerts via SSE.
@@ -187,7 +190,7 @@ export const Layout = () => {
 
           {/* Navigation */}
           <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-            {navItems.map((item) => {
+            {navItemsComputed.map((item) => {
               const Icon = item.icon;
               const isActive = location.pathname === item.path;
               
@@ -270,7 +273,7 @@ export const Layout = () => {
             {/* Breadcrumb or page title */}
             <div className="hidden lg:block">
               <p className="text-sm text-muted-foreground">
-                {navItems.find(n => n.path === location.pathname)?.label || 'Dashboard'}
+                {navItemsComputed.find(n => n.path === location.pathname)?.label || 'Dashboard'}
               </p>
             </div>
 

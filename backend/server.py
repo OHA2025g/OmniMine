@@ -436,6 +436,9 @@ class Permission(str, Enum):
     AUDIT_READ = "audit:read"
     AUDIT_EXPORT = "audit:export"
 
+    # Agent operations
+    AGENT_PROFILE_UPDATE = "agent:profile_update"
+
 
 ROLE_PERMISSIONS: Dict[str, set] = {
     UserRole.ADMIN.value: {p.value for p in Permission},
@@ -460,6 +463,7 @@ ROLE_PERMISSIONS: Dict[str, set] = {
         Permission.HITL_APPROVE.value,
         Permission.AUDIT_READ.value,
         Permission.AUDIT_EXPORT.value,
+        Permission.AGENT_PROFILE_UPDATE.value,
     },
     UserRole.AGENT.value: {
         Permission.USER_LIST.value,
@@ -828,6 +832,9 @@ class SystemSettings(BaseModel):
     sla_high_hours: int = 8
     sla_medium_hours: int = 24
     sla_low_hours: int = 72
+    password_min_length: int = 8
+    mfa_required_for_admins: bool = False
+    audit_retention_days: int = 90
     social_configs: Dict[str, Dict[str, Any]] = {}
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -959,6 +966,15 @@ class SystemSettingsUpdate(BaseModel):
     sla_high_hours: Optional[int] = None
     sla_medium_hours: Optional[int] = None
     sla_low_hours: Optional[int] = None
+    password_min_length: Optional[int] = None
+    mfa_required_for_admins: Optional[bool] = None
+    audit_retention_days: Optional[int] = None
+
+
+class AdminBulkUserActionRequest(BaseModel):
+    user_ids: List[str]
+    action: str  # activate | deactivate | reset_password
+    new_password: Optional[str] = None
 
 class ExportRequest(BaseModel):
     export_type: str = "feedback"  # feedback, cases, analytics
@@ -1805,12 +1821,17 @@ async def register(user_data: UserCreate):
     existing = await db.users.find_one({"email": user_data.email}, {"_id": 0})
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
+    target_org = getattr(user_data, "org_id", None) or "default"
+    settings = await db.system_settings.find_one({"id": "system_settings", "org_id": target_org}, {"_id": 0})
+    min_len = int((settings or {}).get("password_min_length", 8))
+    if len(user_data.password or "") < min_len:
+        raise HTTPException(status_code=400, detail=f"Password must be at least {min_len} characters")
     
     user = User(
         email=user_data.email,
         name=user_data.name,
         role=user_data.role,
-        org_id=getattr(user_data, "org_id", None) or "default",
+        org_id=target_org,
     )
     user_dict = user.model_dump()
     user_dict["password_hash"] = hash_password(user_data.password)
@@ -1838,6 +1859,8 @@ async def login(credentials: UserLogin):
     user = await db.users.find_one({"email": credentials.email}, {"_id": 0})
     if not user or not verify_password(credentials.password, user.get("password_hash", "")):
         raise HTTPException(status_code=401, detail="Invalid credentials")
+    if user.get("is_active") is False:
+        raise HTTPException(status_code=403, detail="User is deactivated")
     
     org_id = user.get("org_id") or "default"
     token = create_token(user["id"], user["email"], user["role"], org_id)
@@ -1870,7 +1893,7 @@ async def switch_org(payload: SwitchOrgRequest, user: Dict = Depends(get_current
     Admin-only (for now): allows viewing another org's data without re-login.
     """
     if not has_permission(user.get("role"), Permission.ORG_SWITCH.value):
-        raise HTTPException(status_code=403, detail="Only admins can switch organizations")
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
 
     org_id = payload.org_id or "default"
     org = await db.organizations.find_one({"id": org_id}, {"_id": 0})
@@ -2021,8 +2044,8 @@ async def generate_dummy_feedback(_: DummyFeedbackRequest = None, user: Dict = D
     Generate a realistic dummy feedback item using Hugging Face LLM.
     Purpose: exercise the full pipeline (analysis -> alerts -> auto-case creation -> routing).
     """
-    if user.get("role") not in ["admin", "manager"]:
-        raise HTTPException(status_code=403, detail="Only admins/managers can generate dummy feedback")
+    if not has_permission(user.get("role"), Permission.FEEDBACK_BULK_CREATE.value):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
 
     if not (HF_TOKEN and InferenceClient):
         raise HTTPException(status_code=400, detail="Hugging Face is not configured (HF_TOKEN missing)")
@@ -2498,14 +2521,14 @@ async def ingest_feedback(req: IngestRequest, request: Request, user: Dict = Dep
 
 
 @api_router.post("/ingest/website", response_model=IngestResponse)
-async def ingest_website(payload: Dict[str, Any], user: Dict = Depends(get_current_user)):
-    return await ingest_feedback(IngestRequest(source="website", payload=payload), user=user)
+async def ingest_website(payload: Dict[str, Any], request: Request, user: Dict = Depends(get_current_user)):
+    return await ingest_feedback(IngestRequest(source="website", payload=payload), request=request, user=user)
 
 
 @api_router.post("/ingest/support-ticket", response_model=IngestResponse)
-async def ingest_support_ticket(payload: Dict[str, Any], user: Dict = Depends(get_current_user)):
+async def ingest_support_ticket(payload: Dict[str, Any], request: Request, user: Dict = Depends(get_current_user)):
     # Example payloads: zendesk/freshdesk/service-now; normalized extractor handles common fields.
-    return await ingest_feedback(IngestRequest(source="support_ticket", payload=payload), user=user)
+    return await ingest_feedback(IngestRequest(source="support_ticket", payload=payload), request=request, user=user)
 
 
 # ============== MONITORING ROUTES (REAL-TIME) ==============
@@ -2597,6 +2620,8 @@ async def reanalyze_feedback(feedback_id: str, user: Dict = Depends(get_current_
 # ============== CASES (CFL) ROUTES ==============
 @api_router.post("/cases", response_model=Case)
 async def create_case(case_data: CaseCreate, user: Dict = Depends(get_current_user)):
+    if not has_permission(user.get("role"), Permission.CASE_CREATE.value):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
     org_id = get_org_id(user)
     feedback = await db.feedbacks.find_one({"id": case_data.feedback_id, "org_id": org_id}, {"_id": 0})
     if not feedback:
@@ -2719,8 +2744,8 @@ async def start_case_work(case_id: str, request: Request, user: Dict = Depends(g
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
 
-    # Only assignee (or admin/manager) can start work
-    if user.get("role") not in ["admin", "manager"] and case.get("assigned_to") != user.get("sub"):
+    # Require case-start permission or ownership.
+    if not has_permission(user.get("role"), Permission.CASE_START.value) and case.get("assigned_to") != user.get("sub"):
         raise HTTPException(status_code=403, detail="Only the assignee can start work on this case")
 
     await db.cases.update_one(
@@ -2757,7 +2782,7 @@ async def resolve_case(case_id: str, resolution_notes: str, request: Request, us
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
 
-    if user.get("role") not in ["admin", "manager"] and case.get("assigned_to") not in [None, user.get("sub")]:
+    if not has_permission(user.get("role"), Permission.CASE_RESOLVE.value) and case.get("assigned_to") not in [None, user.get("sub")]:
         raise HTTPException(status_code=403, detail="Only the assignee can resolve this case")
     
     await db.cases.update_one(
@@ -2799,6 +2824,8 @@ async def verify_case(case_id: str, survey_data: SurveyBase, request: Request, u
     case = await db.cases.find_one({"id": case_id, "org_id": org_id}, {"_id": 0})
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
+    if not has_permission(user.get("role"), Permission.CASE_VERIFY.value) and case.get("assigned_to") != user.get("sub"):
+        raise HTTPException(status_code=403, detail="Only the assignee can verify this case")
     if survey_data.case_id != case_id:
         raise HTTPException(status_code=400, detail="case_id mismatch")
 
@@ -2868,8 +2895,7 @@ async def upload_case_evidence(
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
 
-    # Only assigned agent/manager/admin can upload evidence
-    if user.get("role") not in ["admin", "manager"] and case.get("assigned_to") not in [None, user.get("sub")]:
+    if not has_permission(user.get("role"), Permission.CASE_EVIDENCE_UPLOAD.value) and case.get("assigned_to") not in [None, user.get("sub")]:
         raise HTTPException(status_code=403, detail="Only the assignee can upload evidence")
 
     original = file.filename or "evidence"
@@ -3022,6 +3048,56 @@ async def query_audit_events(q: AuditQuery, user: Dict = Depends(get_current_use
 
     docs = await db.audit_events.find(query, {"_id": 0}).sort("ts", -1).limit(int(q.limit)).to_list(int(q.limit))
     return [AuditEvent(**d) for d in docs]
+
+
+@api_router.post("/audit/export/csv")
+async def export_audit_csv(q: AuditQuery, user: Dict = Depends(get_current_user)):
+    if not has_permission(user.get("role"), Permission.AUDIT_EXPORT.value):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    org_id = get_org_id(user)
+
+    query: Dict[str, Any] = {"org_id": org_id}
+    if q.actor_id:
+        query["actor_id"] = q.actor_id
+    if q.action:
+        query["action"] = q.action
+    if q.resource_type:
+        query["resource_type"] = q.resource_type
+    if q.resource_id:
+        query["resource_id"] = q.resource_id
+    if q.since or q.until:
+        ts_q: Dict[str, Any] = {}
+        if q.since:
+            ts_q["$gte"] = q.since
+        if q.until:
+            ts_q["$lte"] = q.until
+        query["ts"] = ts_q
+
+    limit = min(int(q.limit or 1000), 5000)
+    docs = await db.audit_events.find(query, {"_id": 0}).sort("ts", -1).limit(limit).to_list(limit)
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["ts", "actor_email", "actor_role", "action", "resource_type", "resource_id", "method", "path", "status", "ip"])
+    for d in docs:
+        writer.writerow([
+            d.get("ts"),
+            d.get("actor_email"),
+            d.get("actor_role"),
+            d.get("action"),
+            d.get("resource_type"),
+            d.get("resource_id"),
+            d.get("method"),
+            d.get("path"),
+            d.get("status"),
+            d.get("ip"),
+        ])
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=audit_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"},
+    )
 
 
 # ============== AGENTIC AI ROUTES ==============
@@ -3338,11 +3414,44 @@ async def get_users(role: Optional[UserRole] = None, user: Dict = Depends(get_cu
     return sanitized
 
 
+@api_router.get("/admin/summary")
+async def get_admin_summary(user: Dict = Depends(get_current_user)):
+    if not has_permission(user.get("role"), Permission.ORG_CREATE.value):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+
+    org_id = get_org_id(user)
+    total_users = await db.users.count_documents({"org_id": org_id})
+    role_counts = {
+        "admin": await db.users.count_documents({"org_id": org_id, "role": "admin"}),
+        "manager": await db.users.count_documents({"org_id": org_id, "role": "manager"}),
+        "agent": await db.users.count_documents({"org_id": org_id, "role": "agent"}),
+        "analyst": await db.users.count_documents({"org_id": org_id, "role": "analyst"}),
+    }
+    total_feedback = await db.feedbacks.count_documents({"org_id": org_id})
+    total_cases = await db.cases.count_documents({"org_id": org_id})
+    open_cases = await db.cases.count_documents({"org_id": org_id, "status": {"$in": ["open", "assigned", "in_progress", "escalated"]}})
+    total_alerts = await db.alerts.count_documents({"org_id": org_id})
+    unread_alerts = await db.alerts.count_documents({"org_id": org_id, "is_read": False})
+    audit_events_24h = await db.audit_events.count_documents({
+        "org_id": org_id,
+        "ts": {"$gte": (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()},
+    })
+
+    return {
+        "org_id": org_id,
+        "users": {"total": total_users, "by_role": role_counts},
+        "feedback": {"total": total_feedback},
+        "cases": {"total": total_cases, "open_like": open_cases},
+        "alerts": {"total": total_alerts, "unread": unread_alerts},
+        "audit": {"events_last_24h": audit_events_24h},
+    }
+
+
 # ============== ORG ROUTES (PHASE 4) ==============
 @api_router.get("/orgs", response_model=List[Organization])
 async def list_orgs(user: Dict = Depends(get_current_user)):
-    if user.get("role") not in ["admin"]:
-        raise HTTPException(status_code=403, detail="Only admins can list organizations")
+    if not has_permission(user.get("role"), Permission.ORG_LIST.value):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
     orgs = await db.organizations.find({}, {"_id": 0}).sort("created_at", -1).to_list(1000)
     for o in orgs:
         if isinstance(o.get("created_at"), str):
@@ -3352,8 +3461,8 @@ async def list_orgs(user: Dict = Depends(get_current_user)):
 
 @api_router.post("/orgs", response_model=Organization)
 async def create_org(payload: OrganizationCreate, user: Dict = Depends(get_current_user)):
-    if user.get("role") not in ["admin"]:
-        raise HTTPException(status_code=403, detail="Only admins can create organizations")
+    if not has_permission(user.get("role"), Permission.ORG_CREATE.value):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
     org = Organization(name=payload.name)
     doc = org.model_dump()
     doc["created_at"] = org.created_at.isoformat()
@@ -3410,6 +3519,51 @@ async def update_user_role(user_id: str, new_role: UserRole, request: Request, c
         metadata={"new_role": new_role.value},
     )
     return {"message": "Role updated successfully"}
+
+
+@api_router.post("/users/bulk-action")
+async def bulk_user_action(payload: AdminBulkUserActionRequest, request: Request, current_user: Dict = Depends(get_current_user)):
+    if not has_permission(current_user.get("role"), Permission.USER_ROLE_CHANGE.value):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+
+    org_id = get_org_id(current_user)
+    user_ids = list({u for u in (payload.user_ids or []) if u})
+    if not user_ids:
+        raise HTTPException(status_code=400, detail="No user_ids provided")
+
+    action = (payload.action or "").strip().lower()
+    if action not in {"activate", "deactivate", "reset_password"}:
+        raise HTTPException(status_code=400, detail="Invalid action")
+
+    if action == "reset_password":
+        new_pw = (payload.new_password or "").strip()
+        settings = await db.system_settings.find_one({"id": "system_settings", "org_id": org_id}, {"_id": 0})
+        min_len = int((settings or {}).get("password_min_length", 8))
+        if len(new_pw) < min_len:
+            raise HTTPException(status_code=400, detail=f"new_password must be at least {min_len} characters")
+        pw_hash = hash_password(new_pw)
+        result = await db.users.update_many(
+            {"id": {"$in": user_ids}, "org_id": org_id},
+            {"$set": {"password_hash": pw_hash}},
+        )
+    else:
+        target_active = action == "activate"
+        result = await db.users.update_many(
+            {"id": {"$in": user_ids}, "org_id": org_id},
+            {"$set": {"is_active": target_active}},
+        )
+
+    await write_audit_event(
+        org_id=org_id,
+        actor=current_user,
+        action=f"user_bulk_{action}",
+        resource_type="user",
+        resource_id=None,
+        request=request,
+        status_code=200,
+        metadata={"user_ids": user_ids, "matched": result.matched_count, "modified": result.modified_count},
+    )
+    return {"matched": result.matched_count, "modified": result.modified_count, "action": action}
 
 # ============== TEAMS ROUTES ==============
 @api_router.post("/teams", response_model=Team)
@@ -3756,8 +3910,8 @@ async def check_sla_breaches():
 @api_router.post("/sla/check")
 async def trigger_sla_check(user: Dict = Depends(get_current_user)):
     """Manually trigger SLA breach check"""
-    if user.get("role") not in ["admin", "manager"]:
-        raise HTTPException(status_code=403, detail="Only admins/managers can run SLA checks")
+    if not has_permission(user.get("role"), Permission.SLA_RUN.value):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
     breached = await check_sla_breaches()
     return {"message": f"SLA check completed. Found {len(breached)} breached cases."}
 
@@ -3768,8 +3922,8 @@ async def manual_escalate_case(case_id: str, reason: str = "Escalated manually",
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
 
-    if user.get("role") not in ["admin", "manager"]:
-        raise HTTPException(status_code=403, detail="Only admins/managers can escalate cases")
+    if not has_permission(user.get("role"), Permission.CASE_ESCALATE.value):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
 
     now_iso = datetime.now(timezone.utc).isoformat()
     await db.cases.update_one(
@@ -3826,6 +3980,14 @@ async def update_system_settings(updates: SystemSettingsUpdate, request: Request
         {"$set": update_data},
         upsert=True
     )
+    if "audit_retention_days" in update_data:
+        try:
+            retention_days = int(update_data.get("audit_retention_days") or 0)
+            if retention_days > 0:
+                cutoff = (datetime.now(timezone.utc) - timedelta(days=retention_days)).isoformat()
+                await db.audit_events.delete_many({"org_id": org_id, "ts": {"$lt": cutoff}})
+        except Exception:
+            pass
     after = await db.system_settings.find_one({"id": "system_settings", "org_id": org_id}, {"_id": 0})
     await write_audit_event(
         org_id=org_id,
@@ -3910,8 +4072,8 @@ async def update_social_config(platform: str, config: SocialMediaConfigUpdate, r
 
 @api_router.delete("/settings/social/{platform}")
 async def delete_social_config(platform: str, user: Dict = Depends(get_current_user)):
-    if user.get("role") not in ["admin"]:
-        raise HTTPException(status_code=403, detail="Only admins can delete social media settings")
+    if not has_permission(user.get("role"), Permission.SOCIAL_SETTINGS_UPDATE.value):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
     
     org_id = get_org_id(user)
     settings = await db.system_settings.find_one({"id": "system_settings", "org_id": org_id}, {"_id": 0})
@@ -4386,8 +4548,8 @@ async def get_agent_profile(user_id: str, user: Dict = Depends(get_current_user)
 @api_router.put("/agents/profiles/{user_id}")
 async def update_agent_profile(user_id: str, updates: AgentProfileUpdate, user: Dict = Depends(get_current_user)):
     """Update an agent's profile (skills, workload capacity, availability)"""
-    if user.get("role") not in ["admin", "manager"]:
-        raise HTTPException(status_code=403, detail="Only admins and managers can update agent profiles")
+    if not has_permission(user.get("role"), Permission.AGENT_PROFILE_UPDATE.value):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
     
     update_data = {k: v for k, v in updates.model_dump().items() if v is not None}
     update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
@@ -4538,8 +4700,8 @@ async def create_scheduled_report(
     user: Dict = Depends(get_current_user)
 ):
     """Create a new scheduled report"""
-    if user.get("role") not in ["admin", "manager"]:
-        raise HTTPException(status_code=403, detail="Only admins and managers can create scheduled reports")
+    if not has_permission(user.get("role"), Permission.REPORTS_MANAGE.value):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
     
     report = ScheduledReport(
         name=name,
@@ -4557,8 +4719,8 @@ async def create_scheduled_report(
 @api_router.delete("/reports/scheduled/{report_id}")
 async def delete_scheduled_report(report_id: str, user: Dict = Depends(get_current_user)):
     """Delete a scheduled report"""
-    if user.get("role") not in ["admin", "manager"]:
-        raise HTTPException(status_code=403, detail="Only admins and managers can delete scheduled reports")
+    if not has_permission(user.get("role"), Permission.REPORTS_MANAGE.value):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
     
     await db.scheduled_reports.delete_one({"id": report_id})
     return {"message": "Report deleted"}
@@ -4615,6 +4777,16 @@ async def startup_multi_tenant_bootstrap():
         except Exception:
             # some collections may not exist yet
             pass
+
+    # Core indexes for admin/compliance query performance (best-effort).
+    try:
+        await db.audit_events.create_index([("org_id", 1), ("ts", -1)])
+        await db.audit_events.create_index([("org_id", 1), ("action", 1), ("ts", -1)])
+        await db.audit_events.create_index([("org_id", 1), ("resource_type", 1), ("resource_id", 1), ("ts", -1)])
+        await db.users.create_index([("org_id", 1), ("email", 1)], unique=True)
+        await db.users.create_index([("org_id", 1), ("is_active", 1)])
+    except Exception:
+        pass
 
     # Audit retention cleanup (best-effort)
     if AUDIT_RETENTION_DAYS > 0:

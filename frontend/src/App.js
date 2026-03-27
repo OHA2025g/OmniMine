@@ -11,6 +11,7 @@ import { AlertsPage } from "./pages/AlertsPage";
 import { SurveysPage } from "./pages/SurveysPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { AgentsPage } from "./pages/AgentsPage";
+import { AdminPage } from "./pages/AdminPage";
 import { Toaster } from "sonner";
 
 const ProtectedRoute = ({ children }) => {
@@ -81,6 +82,7 @@ function AppRoutes() {
         <Route path="alerts" element={<AlertsPage />} />
         <Route path="surveys" element={<SurveysPage />} />
         <Route path="settings" element={<SettingsPage />} />
+        <Route path="admin" element={<AdminPage />} />
       </Route>
       
       {/* Catch all */}

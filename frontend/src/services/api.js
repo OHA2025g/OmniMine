@@ -236,3 +236,44 @@ export const switchOrg = async (orgId) => {
   const response = await axios.post(`${API_URL}/auth/switch-org`, { org_id: orgId });
   return response.data;
 };
+
+// Admin console
+export const getAdminSummary = async () => {
+  const response = await axios.get(`${API_URL}/admin/summary`);
+  return response.data;
+};
+
+export const createOrg = async (name) => {
+  const response = await axios.post(`${API_URL}/orgs`, { name });
+  return response.data;
+};
+
+export const moveUserToOrg = async (orgId, userId) => {
+  const response = await axios.put(`${API_URL}/orgs/${orgId}/users/${userId}`);
+  return response.data;
+};
+
+export const queryAuditEvents = async (payload = {}) => {
+  const response = await axios.post(`${API_URL}/audit`, payload);
+  return response.data;
+};
+
+export const exportAuditCsv = async (payload = {}) => {
+  const response = await axios.post(`${API_URL}/audit/export/csv`, payload, { responseType: 'blob' });
+  return response.data;
+};
+
+export const bulkUserAction = async (data) => {
+  const response = await axios.post(`${API_URL}/users/bulk-action`, data);
+  return response.data;
+};
+
+export const getSystemSettings = async () => {
+  const response = await axios.get(`${API_URL}/settings/system`);
+  return response.data;
+};
+
+export const updateSystemSettings = async (data) => {
+  const response = await axios.put(`${API_URL}/settings/system`, data);
+  return response.data;
+};
